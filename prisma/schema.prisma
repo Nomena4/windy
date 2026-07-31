@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model dim_temps {
+  id_temps         Int                @id @default(autoincrement())
+  timestamp_utc    DateTime           @unique @db.Timestamptz(6)
+  date             DateTime           @db.Date
+  heure            Int                @db.SmallInt
+  jour_semaine     String
+  is_weekend       Boolean
+  mois             Int                @db.SmallInt
+  trimestre        Int                @db.SmallInt
+  annee            Int                @db.SmallInt
+  fact_qualite_air fact_qualite_air[]
+}
+
+model dim_ville {
+  id_ville         Int                @id @default(autoincrement())
+  nom              String
+  pays             String
+  latitude         Float
+  longitude        Float
+  fact_qualite_air fact_qualite_air[]
+
+  @@unique([nom, pays])
+}
+
+model fact_qualite_air {
+  id_temps  Int
+  id_ville  Int
+  aqi       Int?      @db.SmallInt
+  co        Float?
+  no        Float?
+  no2       Float?
+  o3        Float?
+  so2       Float?
+  pm2_5     Float?
+  pm10      Float?
+  nh3       Float?
+  dim_temps dim_temps @relation(fields: [id_temps], references: [id_temps], onDelete: NoAction, onUpdate: NoAction)
+  dim_ville dim_ville @relation(fields: [id_ville], references: [id_ville], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([id_temps, id_ville])
+  @@index([id_temps], map: "idx_fact_temps")
+  @@index([id_ville], map: "idx_fact_ville")
+}
