@@ -2,15 +2,23 @@ import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
 const prismaClientSingleton = () => {
-  const rawUrl = process.env.DATABASE_URL!;
-  const url = new URL(rawUrl);
-  url.searchParams.delete('channel_binding');
-  url.searchParams.delete('sslmode');
+  const rawUrl = process.env.DATABASE_URL || 'postgresql://placeholder:placeholder@localhost:5432/neondb';
+  let connectionString = rawUrl;
+
+  try {
+    const url = new URL(rawUrl);
+    url.searchParams.delete('channel_binding');
+    url.searchParams.delete('sslmode');
+    connectionString = url.toString();
+  } catch {
+    // If URL parsing fails, fallback to rawUrl
+  }
 
   const adapter = new PrismaPg({
-    connectionString: url.toString(),
+    connectionString,
     ssl: { rejectUnauthorized: false },
   });
+
   return new PrismaClient({ adapter });
 };
 
