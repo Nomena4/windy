@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import type { CityData } from './WindyMap';
 import { getCities } from '../app/actions';
@@ -30,20 +30,35 @@ interface WindyClientProps {
 export default function WindyClient({ cities: initialCities, dbError: initialError }: WindyClientProps) {
   const [cities, setCities] = useState<CityData[]>(initialCities);
   const [dbError, setDbError] = useState<string | null>(initialError);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const result = await getCities();
-        setCities(result.cities);
-        setDbError(result.error);
-      } catch (err) {
-        console.error('Failed to poll latest cities data:', err);
-      }
-    }, 15000);
-
-    return () => clearInterval(interval);
+  const refreshData = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const result = await getCities();
+      setCities(result.cities);
+      setDbError(result.error);
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error('Failed to poll latest cities data:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
   }, []);
 
-  return <WindyMap cities={cities} dbError={dbError} />;
+  useEffect(() => {
+    const interval = setInterval(refreshData, 15000);
+    return () => clearInterval(interval);
+  }, [refreshData]);
+
+  return (
+    <WindyMap
+      cities={cities}
+      dbError={dbError}
+      lastUpdated={lastUpdated}
+      isRefreshing={isRefreshing}
+      onRefresh={refreshData}
+    />
+  );
 }

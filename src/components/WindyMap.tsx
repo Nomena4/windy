@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Search, Wind, Check, Plus, Minus, Maximize2,
   MapPin, Clock, X, ChevronRight, Layers, Activity,
-  Droplets, Flame, Zap, Leaf, Circle, AlertTriangle, ShieldCheck
+  Droplets, Flame, Zap, Leaf, Circle, AlertTriangle, ShieldCheck,
+  RefreshCw, History
 } from 'lucide-react';
 
 export interface CityData {
@@ -83,6 +84,20 @@ function fmt(val: number | null): string {
   return val < 10 ? val.toFixed(1) : Math.round(val).toString();
 }
 
+function formatRelativeTime(dateStr: string | null): string {
+  if (!dateStr) return 'Date inconnue';
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = Math.max(0, now.getTime() - date.getTime());
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+
+  if (diffMins < 1) return 'À l\'instant';
+  if (diffMins < 60) return `Il y a ${diffMins} min`;
+  if (diffHours < 24) return `Il y a ${diffHours} h`;
+  return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 const LAYERS = [
   { id: 'aqi',   label: 'Qualité de l\'air', Icon: Activity,  accentColor: '#3b82f6' },
   { id: 'pm25',  label: 'PM 2.5',            Icon: Droplets,  accentColor: '#f97316' },
@@ -111,9 +126,12 @@ function getLayerValue(city: CityData, layerId: string): number | null {
 interface WindyMapProps {
   cities: CityData[];
   dbError: string | null;
+  lastUpdated?: Date;
+  isRefreshing?: boolean;
+  onRefresh?: () => void;
 }
 
-export default function WindyMap({ cities, dbError }: WindyMapProps) {
+export default function WindyMap({ cities, dbError, lastUpdated, isRefreshing, onRefresh }: WindyMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const leafletMapRef = useRef<any>(null);
@@ -123,6 +141,7 @@ export default function WindyMap({ cities, dbError }: WindyMapProps) {
   const [search, setSearch] = useState('');
   const [activeCityId, setActiveCityId] = useState<number | null>(null);
   const [showMobileLayers, setShowMobileLayers] = useState(false);
+  const [showUpdatesDrawer, setShowUpdatesDrawer] = useState(false);
 
   const filteredCities = search.trim()
     ? cities.filter(c =>
@@ -131,10 +150,17 @@ export default function WindyMap({ cities, dbError }: WindyMapProps) {
       )
     : cities;
 
+  const sortedByRecent = [...cities].sort((a, b) => {
+    const timeA = a.latestReading?.timestamp ? new Date(a.latestReading.timestamp).getTime() : 0;
+    const timeB = b.latestReading?.timestamp ? new Date(b.latestReading.timestamp).getTime() : 0;
+    return timeB - timeA;
+  });
+
   const flyToCity = useCallback((city: CityData) => {
     setSelectedCity(city);
     setActiveCityId(city.id_ville);
     setShowMobileLayers(false);
+    setShowUpdatesDrawer(false);
     leafletMapRef.current?.flyTo([city.latitude, city.longitude], 7, {
       duration: 1.2,
       easeLinearity: 0.25,
@@ -232,6 +258,7 @@ export default function WindyMap({ cities, dbError }: WindyMapProps) {
           setSelectedCity(city);
           setActiveCityId(city.id_ville);
           setShowMobileLayers(false);
+          setShowUpdatesDrawer(false);
         });
 
         marker.addTo(map);
@@ -295,13 +322,37 @@ export default function WindyMap({ cities, dbError }: WindyMapProps) {
           <span className="brand-dot">.air</span>
         </div>
 
-        <button
-          className="layer-toggle-btn-mobile"
-          onClick={() => setShowMobileLayers(!showMobileLayers)}
-          aria-label="Toggle Layers"
-        >
-          <Layers size={18} />
-        </button>
+        <div className="topbar-right-actions">
+          <button
+            className={`updates-toggle-btn ${showUpdatesDrawer ? 'active' : ''}`}
+            onClick={() => { setShowUpdatesDrawer(!showUpdatesDrawer); setShowMobileLayers(false); }}
+            aria-label="Dernières Mises à Jour"
+            title="Voir les dernières mesures"
+          >
+            <History size={15} strokeWidth={2} />
+            <span className="updates-btn-text">Dernières MAJ</span>
+            <span className="live-dot" />
+          </button>
+
+          {onRefresh && (
+            <button
+              className={`refresh-btn ${isRefreshing ? 'spinning' : ''}`}
+              onClick={onRefresh}
+              aria-label="Rafraîchir les données"
+              title="Rafraîchir la base de données"
+            >
+              <RefreshCw size={14} strokeWidth={2} />
+            </button>
+          )}
+
+          <button
+            className="layer-toggle-btn-mobile"
+            onClick={() => { setShowMobileLayers(!showMobileLayers); setShowUpdatesDrawer(false); }}
+            aria-label="Toggle Layers"
+          >
+            <Layers size={18} />
+          </button>
+        </div>
       </header>
 
       {dbError && (
@@ -312,6 +363,76 @@ export default function WindyMap({ cities, dbError }: WindyMapProps) {
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
           <span>{dbError}</span>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════ LATEST UPDATES DRAWER ═══════════════════════════════ */}
+      {showUpdatesDrawer && (
+        <div className="updates-drawer" role="dialog" aria-label="Dernières mises à jour">
+          <div className="updates-drawer-header">
+            <div className="updates-drawer-title">
+              <History size={16} strokeWidth={2} className="title-icon" />
+              <div>
+                <h2>Dernières Mises à Jour</h2>
+                {lastUpdated && (
+                  <span className="updates-subtitle">
+                    Synchronisé {lastUpdated.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                )}
+              </div>
+            </div>
+            <button className="panel-close" onClick={() => setShowUpdatesDrawer(false)} aria-label="Fermer">
+              <X size={14} strokeWidth={2} />
+            </button>
+          </div>
+
+          <div className="updates-list">
+            {sortedByRecent.map((city) => {
+              const r = city.latestReading;
+              const aqi = r?.aqi ?? null;
+              const color = aqiColor(aqi);
+              const tc = aqiTextColor(aqi);
+              const isSelected = activeCityId === city.id_ville;
+
+              return (
+                <div
+                  key={city.id_ville}
+                  className={`update-card ${isSelected ? 'selected' : ''}`}
+                  onClick={() => flyToCity(city)}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="update-card-header">
+                    <div className="update-city-info">
+                      <span className="update-city-name">{city.nom}</span>
+                      <span className="update-country">{city.pays}</span>
+                    </div>
+                    <span className="update-badge" style={{ background: color, color: tc }}>
+                      AQI {aqi ?? '—'}
+                    </span>
+                  </div>
+
+                  <div className="update-card-details">
+                    <span className="update-status" style={{ color }}>
+                      {aqiLabel(aqi)}
+                    </span>
+                    <div className="update-time">
+                      <Clock size={11} strokeWidth={2} />
+                      <span>{formatRelativeTime(r?.timestamp ?? null)}</span>
+                    </div>
+                  </div>
+
+                  {r && (
+                    <div className="update-pollutant-preview">
+                      {r.pm2_5 !== null && <span>PM₂.₅: <b>{fmt(r.pm2_5)}</b></span>}
+                      {r.no2 !== null && <span>NO₂: <b>{fmt(r.no2)}</b></span>}
+                      {r.o3 !== null && <span>O₃: <b>{fmt(r.o3)}</b></span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -460,7 +581,7 @@ export default function WindyMap({ cities, dbError }: WindyMapProps) {
         </div>
       )}
 
-      {!selectedCity && (
+      {!selectedCity && !showUpdatesDrawer && (
         <div className="aqi-legend" aria-label="Légende">
           <div className="legend-header">
             <currentLayer.Icon size={12} strokeWidth={2} />
