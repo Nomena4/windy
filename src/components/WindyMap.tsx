@@ -29,12 +29,12 @@ export interface CityData {
 
 function aqiColor(aqi: number | null): string {
   if (aqi === null) return '#607080';
-  if (aqi <= 50)  return '#10b981'; // Emerald
-  if (aqi <= 100) return '#fbbf24'; // Amber
-  if (aqi <= 150) return '#f97316'; // Orange
-  if (aqi <= 200) return '#ef4444'; // Red
-  if (aqi <= 300) return '#a855f7'; // Purple
-  return '#881337'; // Rose dark
+  if (aqi <= 50)  return '#10b981';
+  if (aqi <= 100) return '#fbbf24';
+  if (aqi <= 150) return '#f97316';
+  if (aqi <= 200) return '#ef4444';
+  if (aqi <= 300) return '#a855f7';
+  return '#881337';
 }
 
 function aqiTextColor(aqi: number | null): string {
@@ -56,15 +56,14 @@ function aqiLabel(aqi: number | null): string {
 function healthInsight(aqi: number | null) {
   if (aqi === null) return { text: 'Données insuffisantes.', icon: Clock };
   if (aqi <= 50) return { text: 'Air pur. Idéal pour les activités en plein air.', icon: ShieldCheck };
-  if (aqi <= 100) return { text: 'Qualité acceptable. Léger risque pour les plus sensibles.', icon: Activity };
+  if (aqi <= 100) return { text: 'Qualité acceptable. Léger risque pour les personnes sensibles.', icon: Activity };
   if (aqi <= 150) return { text: 'Les personnes sensibles devraient limiter l\'effort prolongé.', icon: AlertTriangle };
-  if (aqi <= 200) return { text: 'Effets possibles sur la santé de tous. Réduisez l\'effort en extérieur.', icon: AlertTriangle };
-  return { text: 'Alerte sanitaire. Restez à l\'intérieur, gardez les fenêtres fermées.', icon: AlertTriangle };
+  if (aqi <= 200) return { text: 'Effets possibles sur la santé. Réduisez l\'effort en extérieur.', icon: AlertTriangle };
+  return { text: 'Alerte sanitaire. Restez à l\'intérieur.', icon: AlertTriangle };
 }
 
 function pollutantPercentage(name: string, val: number | null): number {
   if (val === null) return 0;
-  // Approximate WHO limits for visual scale (not strict thresholds)
   const limits: Record<string, number> = {
     'PM₂.₅': 50,
     'PM₁₀': 100,
@@ -123,6 +122,7 @@ export default function WindyMap({ cities, dbError }: WindyMapProps) {
   const [activeLayer, setActiveLayer] = useState('aqi');
   const [search, setSearch] = useState('');
   const [activeCityId, setActiveCityId] = useState<number | null>(null);
+  const [showMobileLayers, setShowMobileLayers] = useState(false);
 
   const filteredCities = search.trim()
     ? cities.filter(c =>
@@ -134,6 +134,7 @@ export default function WindyMap({ cities, dbError }: WindyMapProps) {
   const flyToCity = useCallback((city: CityData) => {
     setSelectedCity(city);
     setActiveCityId(city.id_ville);
+    setShowMobileLayers(false);
     leafletMapRef.current?.flyTo([city.latitude, city.longitude], 7, {
       duration: 1.2,
       easeLinearity: 0.25,
@@ -230,6 +231,7 @@ export default function WindyMap({ cities, dbError }: WindyMapProps) {
         marker.on('click', () => {
           setSelectedCity(city);
           setActiveCityId(city.id_ville);
+          setShowMobileLayers(false);
         });
 
         marker.addTo(map);
@@ -293,8 +295,13 @@ export default function WindyMap({ cities, dbError }: WindyMapProps) {
           <span className="brand-dot">.air</span>
         </div>
 
-
-
+        <button
+          className="layer-toggle-btn-mobile"
+          onClick={() => setShowMobileLayers(!showMobileLayers)}
+          aria-label="Toggle Layers"
+        >
+          <Layers size={18} />
+        </button>
       </header>
 
       {dbError && (
@@ -308,10 +315,13 @@ export default function WindyMap({ cities, dbError }: WindyMapProps) {
         </div>
       )}
 
-      <nav className="right-panel" aria-label="Couches de données">
+      <nav className={`right-panel ${showMobileLayers ? 'mobile-open' : ''}`} aria-label="Couches de données">
         <div className="right-panel-title">
           <Layers size={12} strokeWidth={2} />
           <span>Couches</span>
+          <button className="mobile-close-layers" onClick={() => setShowMobileLayers(false)} aria-label="Close">
+            <X size={14} />
+          </button>
         </div>
         {LAYERS.map(({ id, label, Icon, accentColor }) => {
           const isActive = activeLayer === id;
@@ -320,7 +330,7 @@ export default function WindyMap({ cities, dbError }: WindyMapProps) {
               key={id}
               id={`layer-${id}`}
               className={`layer-item${isActive ? ' active' : ''}`}
-              onClick={() => setActiveLayer(id)}
+              onClick={() => { setActiveLayer(id); setShowMobileLayers(false); }}
               aria-pressed={isActive}
               style={isActive ? { '--layer-accent': accentColor } as React.CSSProperties : {}}
             >
@@ -357,6 +367,7 @@ export default function WindyMap({ cities, dbError }: WindyMapProps) {
             borderColor: `${selectedColor}44`
           }}
         >
+          <div className="sheet-handle" />
           <div className="city-panel-header">
             <div className="city-panel-header-info">
               <h2 className="city-panel-name">{selectedCity.nom}</h2>
